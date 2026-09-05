@@ -17,6 +17,7 @@ from collections.abc import (
     Collection,
     Coroutine,
     Generator,
+    Iterable,
     Iterator,
     Mapping,
     Sequence,
@@ -35,8 +36,10 @@ from typing import (
     Any,
     Literal,
     Protocol,
+    SupportsIndex,
     TypeVar,
     cast,
+    overload,
 )
 
 import anyio
@@ -2252,7 +2255,89 @@ class _FrontendRouteGroup(BaseRoute):
                 scope["fastapi_function_astack"] = previous_function_astack
 
 
+class _RoutesList(list[BaseRoute]):
+    def __init__(
+        self,
+        iterable: Iterable[BaseRoute] = (),
+        *,
+        on_change: Callable[[], None] | None = None,
+    ) -> None:
+        super().__init__(iterable)
+        self._on_change = on_change
+
+    def _notify(self) -> None:
+        if self._on_change is not None:
+            self._on_change()
+
+    def append(self, item: BaseRoute) -> None:
+        super().append(item)
+        self._notify()
+
+    def extend(self, iterable: Iterable[BaseRoute]) -> None:
+        super().extend(iterable)
+        self._notify()
+
+    def insert(self, index: SupportsIndex, item: BaseRoute) -> None:
+        super().insert(index, item)
+        self._notify()
+
+    def pop(self, index: SupportsIndex = -1) -> BaseRoute:
+        val = super().pop(index)
+        self._notify()
+        return val
+
+    def remove(self, value: BaseRoute) -> None:
+        super().remove(value)
+        self._notify()
+
+    def clear(self) -> None:
+        super().clear()
+        self._notify()
+
+    def sort(self, *, key: Any = None, reverse: bool = False) -> None:
+        super().sort(key=key, reverse=reverse)
+        self._notify()
+
+    def reverse(self) -> None:
+        super().reverse()
+        self._notify()
+
+    @overload
+    def __setitem__(self, key: SupportsIndex, value: BaseRoute) -> None: ...
+
+    @overload
+    def __setitem__(self, key: slice, value: Iterable[BaseRoute]) -> None: ...
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        super().__setitem__(key, value)
+        self._notify()
+
+    @overload
+    def __delitem__(self, key: SupportsIndex) -> None: ...
+
+    @overload
+    def __delitem__(self, key: slice) -> None: ...
+
+    def __delitem__(self, key: Any) -> None:
+        super().__delitem__(key)
+        self._notify()
+
+    def __iadd__(self, other: Iterable[BaseRoute]) -> "_RoutesList":
+        super().__iadd__(other)
+        self._notify()
+        return self
+
+    def __imul__(self, value: SupportsIndex) -> "_RoutesList":
+        super().__imul__(value)
+        self._notify()
+        return self
+
+    def copy(self) -> list[BaseRoute]:
+        return list(self)
+
+
 class APIRouter(routing.Router):
+    _routes_version: int = 0
     """
     `APIRouter` class, used to group *path operations*, for example to structure
     an app in multiple files. It would then be included in the `FastAPI` app, or
@@ -2529,6 +2614,8 @@ class APIRouter(routing.Router):
             lifespan_context = lifespan
         self.lifespan_context = lifespan_context
 
+        self._routes_version = 0
+        self._routes: _RoutesList = _RoutesList(on_change=self._mark_routes_changed)
         super().__init__(
             routes=routes,
             redirect_slashes=redirect_slashes,
@@ -2566,6 +2653,18 @@ class APIRouter(routing.Router):
         self._routes_version = 0
         self._low_priority_routes: list[BaseRoute] = []
         self._frontend_routes: _FrontendRouteGroup | None = None
+
+    @property
+    def routes(self) -> list[BaseRoute]:
+        return self._routes
+
+    @routes.setter
+    def routes(self, value: Sequence[BaseRoute] | None) -> None:
+        self._routes = _RoutesList(
+            value or [],
+            on_change=self._mark_routes_changed,
+        )
+        self._mark_routes_changed()
 
     def _mark_routes_changed(self) -> None:
         self._routes_version += 1
