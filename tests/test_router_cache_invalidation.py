@@ -290,3 +290,21 @@ def test_routes_mutation_invalidates_openapi_schema_cache():
     schema2 = app.openapi()
     assert "/api/first" in schema2["paths"]
     assert "/api/second" in schema2["paths"]
+
+
+def test_route_registration_increments_version_exactly_once():
+    router = APIRouter()
+    initial_version = router._routes_version
+
+    @router.get("/first")
+    def first():
+        return {"msg": "first"}
+
+    assert router._routes_version == initial_version + 1
+
+    router.add_api_route("/second", lambda: {"msg": "second"})
+    assert router._routes_version == initial_version + 2
+
+    other = APIRouter()
+    router.include_router(other, prefix="/sub")
+    assert router._routes_version == initial_version + 3

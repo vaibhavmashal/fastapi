@@ -2715,7 +2715,6 @@ class APIRouter(routing.Router):
             name=name,
             include_in_schema=include_in_schema,
         )
-        self._mark_routes_changed()
 
     def add_websocket_route(
         self,
@@ -2724,7 +2723,6 @@ class APIRouter(routing.Router):
         name: str | None = None,
     ) -> None:
         super().add_websocket_route(path, endpoint, name=name)
-        self._mark_routes_changed()
 
     def frontend(
         self,
@@ -3067,7 +3065,6 @@ class APIRouter(routing.Router):
             ),
         )
         self.routes.append(route)
-        self._mark_routes_changed()
 
     def api_route(
         self,
@@ -3151,7 +3148,6 @@ class APIRouter(routing.Router):
             dependency_overrides_provider=self.dependency_overrides_provider,
         )
         self.routes.append(route)
-        self._mark_routes_changed()
 
     def websocket(
         self,
@@ -3408,7 +3404,6 @@ class APIRouter(routing.Router):
         self.routes.append(
             _IncludedRouter(original_router=router, include_context=include_context)
         )
-        self._mark_routes_changed()
         for handler in router.on_startup:
             self.add_event_handler("startup", handler)
         for handler in router.on_shutdown:
